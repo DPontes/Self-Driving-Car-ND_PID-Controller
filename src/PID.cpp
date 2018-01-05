@@ -56,9 +56,39 @@ void PID::Init(double Kp, double Ki, double Kd,
 } // PID::Init()
 
 /*
-
+  PID function to calculate each error term (Proportional, Integral and derivative).
+  I term includes min/max guard for integral windup and manual cut flag for standing
+  start condition.
+  D term includes latching until next discrete cte update, smoothing, and min/max
+  guard to prevent spikes
 */
 void PID::UpdateError(double cte) {
+  // P term
+  p_error_ = -Kp * cte;
+
+  // I term with max windup limit and manual cut
+  if(i_cut_ == false){
+    i_error_ += -Ki_ * cte;
+    i_error_  = MinMaxLimit(i_error_, i_max_);
+  }
+  else{
+    i_error_  = 0.0;
+  }
+
+  // D term latched until next cte update
+  if(cte != prev_cte_){
+    d_error_ = -Kd * (cte - prev_cte_);
+
+    // Smoothing
+    d_error_ = prev_d_error_ * (d_smooth_-1.0)/d_smooth_ + d_error_ / d_smooth_;
+
+    // Max limit
+    d_error_ = MinMaxLimit(d_error_, d_max_);
+
+    prev_d_error_ = d_error_;
+  }
+
+  prev_cte_ = cte;
 }
 
 double PID::TotalError() {
