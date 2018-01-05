@@ -12,7 +12,7 @@ public:
 
   /*
   * Coefficients
-  */ 
+  */
   double Kp;
   double Ki;
   double Kd;
@@ -26,6 +26,11 @@ public:
   * Destructor.
   */
   virtual ~PID();
+
+  /*
+    Reset PID terms to initial values
+  */
+  void Reset();
 
   /*
   * Initialize PID.
