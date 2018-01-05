@@ -91,5 +91,22 @@ void PID::UpdateError(double cte) {
   prev_cte_ = cte;
 }
 
+/*
+  min Max Guard function
+*/
+double PID::MinMaxLimit(double raw_value, double minmax_limit){
+
+  double limited_value = raw_value;
+
+  if(limited_value > minmax_limit){
+    limited_value = minmax_limit;
+  }
+  else if(limited_value < -minmax_limit){
+    limited_value = -minmax_limit;
+  }
+
+  return limited_value;
+}
+
 double PID::TotalError() {
 }

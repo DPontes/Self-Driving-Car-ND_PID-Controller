@@ -78,4 +78,9 @@ public:
   double TotalError();
 };
 
+  /*
+    Limiting Functions
+  */
+  double MinMaxLimit(double raw_value, double minmax_limit);
+
 #endif /* PID_H */
