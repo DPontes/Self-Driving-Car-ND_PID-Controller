@@ -32,10 +32,32 @@ void PID::Reset(){
   PID initialization to set gains and other stored parameters.
   Reset function is also called to clear error terms
 */
-void PID::Init(double Kp, double Ki, double Kd) {
+void PID::Init(double Kp, double Ki, double Kd,
+               double i_max. double d_smooth, double error_rate_max) {
+  // Initialize parameters
+  Kp_             = Kp;
+  Ki_             = Ki;
+  Kd_             = Kd;
+  i_max_          = i_max;
+  i_cut_          = false;
+  d_max_          = dmax;
+  d_smooth_       = d_smooth;
+  error_rate_max_ = error_rate_max;
 
-}
+  // Initialize twiddle parameters
+  Kgains_ = {&Kp_, &Ki_, &Kd_};
+  Kdeltas_ = {0.05, 0.0005, 1.0};
+  twiddle_best_error_ = __DBL_MAX__;
+  twiddle_idx_ = 0;
+  twiddle_switch_ = false;
 
+  // Reset PID terms to initial values
+  Reset();
+} // PID::Init()
+
+/*
+
+*/
 void PID::UpdateError(double cte) {
 }
 
