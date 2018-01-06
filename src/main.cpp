@@ -32,10 +32,45 @@ int main()
 {
   uWS::Hub h;
 
-  PID pid;
-  // TODO: Initialize the pid variable.
+  // Steering PID control parameters
+  constexpr double kMaxI         = 1.0;     // Max guard for I term
+  constexpr double kMaxD         = 0.2;     // Max guard for D term
+  constexpr double kSmoothD      = 3.0;     // Smoothing factor for D term
+  constexpr double kMaxErrorRate = 0.05;    // Max rate limit for PID output
 
-  h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  // Driving parameters
+  struct Drive{
+    long int n_loop          = 0;      // Loop counter for reference
+    double throttle          = 0.3;    // Use a constant value for simplicity
+    bool use_twiddle         = false;  // flag to enable PID twiddling
+    int kTwiddleNStartError  = 1000;   // n. of loops before twiddle error starts
+    int kTwiddleNReset       = 5000;   // n. of loops to run each twiddle param set
+  };
+
+  Drive drive;
+  PID pid;
+
+  // Tune PID parameters
+  // 1. PD Only
+  //pid.Init(0.1, 0.000, 2.0, 1.0, 1.0, 1.0, 1.0);
+  // 2. PD only with filters
+  //pid.Init(0.1, 0.000, 2.0, kMaxI, kMaxD, kSmoothD, kMaxErrorRate);
+  // 3. PID
+  //pid.Init(0.1, 0.001, 2.0, kMaxI, kMaxD, kSmoothD, kMaxErrorRate);
+  // 4. PID twiddled
+  pid.Init(0.084271, 0.000690, 3.000000, kMaxI, kMaxD, kSmoothD, kMaxErrorRate);
+
+  // Set debug logging decimal precision
+  std::cout << std::fixed;
+  std::cout << std::setprecision(6);
+
+  std::cout << "Initial gains: Kp: " << pid.Kp_ << ", Ki: " << pid.Ki_
+            << ", Kd: " << pid.Kd_ << ", kMaxI: " << kMaxI << ", kMaxD: "
+            << kMaxD << ", kSmoothD: " << kSmoothD << ", kMaxErrorRate: "
+            << kMaxErrorRate << std::endl;
+
+
+  h.onMessage([&pid, &drive](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -51,15 +86,73 @@ int main()
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
           double steer_value;
-          /*
-          * TODO: Calcuate steering value here, remember the steering value is
-          * [-1, 1].
-          * NOTE: Feel free to play around with the throttle and speed. Maybe use
-          * another PID controller to control the speed!
-          */
-          
-          // DEBUG
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+
+          // Increment loop counter
+          drive.n_loop += 1;
+
+          // Twiddle algorithm to auto-tune parameters
+          if(drive.use_twiddle == true){
+            // Accumulate error term after driving has stabilized
+            if(drive.n_loop > drive.kTwiddleNStartError){
+              pid.TwiddleErrorUpdate(cte, angle);
+            }
+
+            // Set a crashed flag if speed drops too low such as from going
+            // off track or hitting a wall
+            bool hasCrashed = ((drive.n_loop > drive.kTwiddleNStartError)
+                              && (speed < 10.0));
+
+            // End run and start next parameter set
+            if((drive.n_loop > drive.kTwiddleNReset) || (hasCrashed)){
+              // If run ended by crash condition, force a high value for
+              // twiddle error to evaluate it as a bad parameter set.
+              if (hasCrashed) { pid.twiddle_error_ = 999999.; }
+
+              std::cout << "Result error: " << pid.twiddle_error_ << std::endl;
+
+              // Use twiddle algorithm to decide next parameter set to try
+              pid.TwiddleParamUpdate();
+
+              // Debug log output of twiddle result
+              std::cout << "\nTry gains: " << pid.twiddle_idx_ << ", Kp: "
+                        << pid.Kp_ << ", Ki: " << pid.Ki_ << ", Kd: "
+                        << pid.Kd_ << std::endl;
+              std::cout << "        Delta dKp: " << pid.Kdeltas_[0]
+                        << ", dKi: " << pid.Kdeltas_[1] << ", dKd: "
+                        << pid.Kdeltas_[2] << std::endl;
+              std::cout << "        Current best error: "
+                        << pid.twiddle_best_error_ << std::endl;
+
+              // Reset simulator drive and start next run
+              drive.n_loop = 0;
+              pid.Reset();
+              std::string reset_msg = "42[\"reset\",{}]";
+              ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
+            }
+          }
+
+          // Steering PID control
+          // Disable I Term if car is not moving fast enough (standing start)
+          if(speed < 10.0) { pid.i_cut_ = true; }
+          else { pid.i_cut_ = false; }
+
+          // Update PID terms with latest CTE
+          pid.UpdateError(cte);
+
+          // Update PID terms steering value from PID output
+          steer_value = pid.TotalError();
+
+          // Output each loop's debug log if not twiddling
+          if(drive.use_twiddle == false){
+            std::cout << "N: " << drive.n_loop
+                      << ", Steer: " << steer_value
+                      << ", CTE: " << cte
+                      << ", Speed: " << speed
+                      << ", P: " << pid.p_error_
+                      << ", I: " << pid.i_error_
+                      << ", D: " << pid.d_error_
+                      << ", Throttle: " << drive.throttle << std::endl;
+          }
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;

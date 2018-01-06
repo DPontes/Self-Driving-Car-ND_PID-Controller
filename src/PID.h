@@ -1,6 +1,8 @@
 #ifndef PID_H
 #define PID_H
 
+#include <vector>
+
 class PID {
 public:
   /*
@@ -76,11 +78,19 @@ public:
   * Calculate the total PID error.
   */
   double TotalError();
-};
 
   /*
     Limiting Functions
   */
   double MinMaxLimit(double raw_value, double minmax_limit);
+  double RateLimit(double raw_value, double prev_value, double rate_max);
+
+  /*
+    Twiddle algorithm Functions
+  */
+  void TwiddleErrorUpdate(double cte, double steer);
+  void TwiddleParamUpdate();
+};
+
 
 #endif /* PID_H */
